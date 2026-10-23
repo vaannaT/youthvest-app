@@ -14,7 +14,15 @@ struct PortfolioDataPoint: Identifiable {
     let value: Double
 }
 
-// MARK: - Gamified Academy Models
+struct TradeTransaction: Identifiable, Codable {
+    let id: UUID
+    let symbol: String
+    let shares: Int
+    let price: Double
+    let type: String
+    let timestamp: Date
+}
+
 struct LessonQuestion: Identifiable {
     let id = UUID()
     let question: String
@@ -36,9 +44,7 @@ struct AcademyModule: Identifiable {
 
 class PortfolioManager: ObservableObject {
     @Published var cash: Double {
-        didSet {
-            UserDefaults.standard.set(cash, forKey: "youthvest_cash")
-        }
+        didSet { UserDefaults.standard.set(cash, forKey: "youthvest_cash") }
     }
     
     @Published var holdings: [String: Holding] {
@@ -49,17 +55,21 @@ class PortfolioManager: ObservableObject {
         }
     }
     
-    // User Gamification Stats
-    @Published var userXP: Int {
+    @Published var transactions: [TradeTransaction] {
         didSet {
-            UserDefaults.standard.set(userXP, forKey: "youthvest_xp")
+            if let encoded = try? JSONEncoder().encode(transactions) {
+                UserDefaults.standard.set(encoded, forKey: "youthvest_txns")
+            }
         }
+    }
+    
+    @Published var userXP: Int {
+        didSet { UserDefaults.standard.set(userXP, forKey: "youthvest_xp") }
     }
     
     @Published var completedLessons: Set<String> {
         didSet {
-            let array = Array(completedLessons)
-            UserDefaults.standard.set(array, forKey: "youthvest_completed_lessons")
+            UserDefaults.standard.set(Array(completedLessons), forKey: "youthvest_lessons")
         }
     }
     
@@ -68,7 +78,8 @@ class PortfolioManager: ObservableObject {
         "SPY": 510.25,
         "NVDA": 125.75,
         "TSLA": 218.40,
-        "MSFT": 428.10
+        "MSFT": 428.10,
+        "GOOGL": 165.30
     ]
     
     let modules: [AcademyModule] = [
@@ -155,10 +166,9 @@ class PortfolioManager: ObservableObject {
     init() {
         let savedCash = UserDefaults.standard.double(forKey: "youthvest_cash")
         self.cash = savedCash > 0 ? savedCash : 10_000.00
-        
         self.userXP = UserDefaults.standard.integer(forKey: "youthvest_xp")
         
-        if let savedLessons = UserDefaults.standard.stringArray(forKey: "youthvest_completed_lessons") {
+        if let savedLessons = UserDefaults.standard.stringArray(forKey: "youthvest_lessons") {
             self.completedLessons = Set(savedLessons)
         } else {
             self.completedLessons = []
@@ -170,16 +180,24 @@ class PortfolioManager: ObservableObject {
         } else {
             self.holdings = [:]
         }
+        
+        if let txData = UserDefaults.standard.data(forKey: "youthvest_txns"),
+           let decodedTx = try? JSONDecoder().decode([TradeTransaction].self, from: txData) {
+            self.transactions = decodedTx
+        } else {
+            self.transactions = []
+        }
     }
     
     var performanceHistory: [PortfolioDataPoint] {
-        [
-            PortfolioDataPoint(day: "Mon", value: 9_850.00),
-            PortfolioDataPoint(day: "Tue", value: 9_920.00),
-            PortfolioDataPoint(day: "Wed", value: 10_050.00),
-            PortfolioDataPoint(day: "Thu", value: 10_120.00),
-            PortfolioDataPoint(day: "Fri", value: 10_080.00),
-            PortfolioDataPoint(day: "Sat", value: 10_180.00),
+        let base = max(netWorth - 650.0, 9_500.0)
+        return [
+            PortfolioDataPoint(day: "Mon", value: base),
+            PortfolioDataPoint(day: "Tue", value: base + 110.0),
+            PortfolioDataPoint(day: "Wed", value: base + 195.0),
+            PortfolioDataPoint(day: "Thu", value: base + 340.0),
+            PortfolioDataPoint(day: "Fri", value: base + 420.0),
+            PortfolioDataPoint(day: "Sat", value: base + 530.0),
             PortfolioDataPoint(day: "Today", value: netWorth)
         ]
     }
@@ -224,6 +242,8 @@ class PortfolioManager: ObservableObject {
         } else {
             holdings[sym] = Holding(symbol: sym, shares: shares, avgPrice: price)
         }
+        
+        transactions.insert(TradeTransaction(id: UUID(), symbol: sym, shares: shares, price: price, type: "BUY", timestamp: Date()), at: 0)
         return true
     }
     
@@ -244,6 +264,8 @@ class PortfolioManager: ObservableObject {
         } else {
             holdings[sym] = existing
         }
+        
+        transactions.insert(TradeTransaction(id: UUID(), symbol: sym, shares: shares, price: price, type: "SELL", timestamp: Date()), at: 0)
         return true
     }
 }
