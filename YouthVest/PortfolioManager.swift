@@ -94,6 +94,13 @@ class PortfolioManager: ObservableObject {
         }
     }
     
+    // Stress Test & Crisis Simulator State
+    @Published var completedScenarios: Set<String> {
+        didSet {
+            UserDefaults.standard.set(Array(completedScenarios), forKey: "youthvest_scenarios")
+        }
+    }
+    
     let stockPrices: [String: Double] = [
         "AAPL": 182.50,
         "SPY": 510.25,
@@ -220,6 +227,12 @@ class PortfolioManager: ObservableObject {
             self.completedLessons = []
         }
         
+        if let savedScenarios = UserDefaults.standard.stringArray(forKey: "youthvest_scenarios") {
+            self.completedScenarios = Set(savedScenarios)
+        } else {
+            self.completedScenarios = []
+        }
+        
         if let data = UserDefaults.standard.data(forKey: "youthvest_holdings"),
            let decoded = try? JSONDecoder().decode([String: Holding].self, from: data) {
             self.holdings = decoded
@@ -301,6 +314,12 @@ class PortfolioManager: ObservableObject {
         guard !completedLessons.contains(moduleId) else { return }
         completedLessons.insert(moduleId)
         userXP += xp
+        cash += bonusCash
+    }
+    
+    func recordScenarioCompletion(scenarioId: String, score: Int, bonusCash: Double) {
+        completedScenarios.insert(scenarioId)
+        userXP += score
         cash += bonusCash
     }
     

@@ -16,6 +16,9 @@ struct ContentView: View {
             TradeStationView(manager: manager)
                 .tabItem { Label("Trade", systemImage: "arrow.left.arrow.right") }
             
+            CrisisSimulatorView(manager: manager)
+                .tabItem { Label("Stress Test", systemImage: "bolt.shield.fill") }
+            
             CivicImpactView(manager: manager)
                 .tabItem { Label("Civic Impact", systemImage: "building.columns.fill") }
             
