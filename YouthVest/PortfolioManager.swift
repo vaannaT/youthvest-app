@@ -23,6 +23,19 @@ struct TradeTransaction: Identifiable, Codable {
     let timestamp: Date
 }
 
+// MARK: - Civic Impact Bond Model
+struct CivicBond: Identifiable, Codable {
+    let id: String
+    let title: String
+    let municipality: String
+    let yieldRate: Double
+    let parValue: Double
+    let impactDescription: String
+    let metricName: String
+    let metricPerUnit: Double
+    var unitsOwned: Int
+}
+
 struct LessonQuestion: Identifiable {
     let id = UUID()
     let question: String
@@ -63,6 +76,14 @@ class PortfolioManager: ObservableObject {
         }
     }
     
+    @Published var civicBonds: [CivicBond] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(civicBonds) {
+                UserDefaults.standard.set(encoded, forKey: "youthvest_civic_bonds")
+            }
+        }
+    }
+    
     @Published var userXP: Int {
         didSet { UserDefaults.standard.set(userXP, forKey: "youthvest_xp") }
     }
@@ -82,7 +103,58 @@ class PortfolioManager: ObservableObject {
         "GOOGL": 165.30
     ]
     
+    let defaultBonds: [CivicBond] = [
+        CivicBond(
+            id: "civic_solar",
+            title: "Community Solar & Green Grid Bond",
+            municipality: "Regional Clean Power Authority",
+            yieldRate: 4.8,
+            parValue: 100.0,
+            impactDescription: "Funds rooftop solar panel installations and smart batteries across regional public high schools.",
+            metricName: "MWh Clean Energy",
+            metricPerUnit: 1.2,
+            unitsOwned: 0
+        ),
+        CivicBond(
+            id: "civic_water",
+            title: "Clean Watershed & Aquifer Bond",
+            municipality: "Municipal Water Agency",
+            yieldRate: 4.2,
+            parValue: 100.0,
+            impactDescription: "Upgrades clean municipal water filtration pipelines and drought runoff reservoirs.",
+            metricName: "K-Gallons Filtered",
+            metricPerUnit: 15.0,
+            unitsOwned: 0
+        )
+    ]
+    
     let modules: [AcademyModule] = [
+        AcademyModule(
+            id: "civic_finance",
+            title: "Civic Bonds & Public Works",
+            subtitle: "How municipal investing builds community infrastructure.",
+            icon: "building.columns.fill",
+            xpReward: 100,
+            cashBonus: 250.0,
+            content: [
+                "A municipal bond is a loan you provide to your local city or school district to fund public infrastructure.",
+                "Unlike speculative trading, civic bonds pay predictable interest while funding schools, roads, and clean energy.",
+                "Civic bonds empower everyday citizens to finance public works that create lasting community benefits."
+            ],
+            quiz: [
+                LessonQuestion(
+                    question: "What is the primary civic purpose of a municipal bond?",
+                    options: [
+                        "Speculating on tech startups",
+                        "Lending capital to local government to build public community infrastructure",
+                        "Paying corporate executive bonuses",
+                        "Purchasing foreign currencies"
+                    ],
+                    correctIndex: 1,
+                    explanation: "Municipal bonds let citizens fund essential community projects like schools, clean water, and public utilities."
+                )
+            ]
+        ),
         AcademyModule(
             id: "stocks_101",
             title: "Stocks & Ownership",
@@ -118,7 +190,7 @@ class PortfolioManager: ObservableObject {
             cashBonus: 150.0,
             content: [
                 "Compound interest is when you earn returns not just on your initial money, but on previous earnings too.",
-                "For high school investors, starting early is the ultimate edge: 10 extra years of compounding can double your ending portfolio.",
+                "For young investors, starting early is the ultimate edge: 10 extra years of compounding can double your ending portfolio.",
                 "Consistency beats timing the market. Automating regular contributions is key."
             ],
             quiz: [
@@ -132,32 +204,6 @@ class PortfolioManager: ObservableObject {
                     ],
                     correctIndex: 1,
                     explanation: "Longer time horizons allow compounding to accelerate exponentially over decades."
-                )
-            ]
-        ),
-        AcademyModule(
-            id: "etfs_diversification",
-            title: "Index Funds & ETFs",
-            subtitle: "Never put all your eggs in one basket.",
-            icon: "square.grid.2x2.fill",
-            xpReward: 100,
-            cashBonus: 200.0,
-            content: [
-                "Diversification means spreading your money across many companies to protect against a single one failing.",
-                "An ETF (Exchange-Traded Fund) like SPY holds hundreds of top companies simultaneously in a single basket.",
-                "Broad-market ETFs reduce company-specific risk while still capturing long-term economic expansion."
-            ],
-            quiz: [
-                LessonQuestion(
-                    question: "What is the primary benefit of holding an ETF like SPY?",
-                    options: [
-                        "Guaranteed daily profits",
-                        "Instant diversification across 500 major companies",
-                        "Direct management of individual corporate boards",
-                        "Tax exemption on all short-term trades"
-                    ],
-                    correctIndex: 1,
-                    explanation: "ETFs track a diverse basket of assets, preventing catastrophe if any single company falters."
                 )
             ]
         )
@@ -187,6 +233,36 @@ class PortfolioManager: ObservableObject {
         } else {
             self.transactions = []
         }
+        
+        if let bondData = UserDefaults.standard.data(forKey: "youthvest_civic_bonds"),
+           let decodedBonds = try? JSONDecoder().decode([CivicBond].self, from: bondData) {
+            self.civicBonds = decodedBonds
+        } else {
+            self.civicBonds = [
+                CivicBond(
+                    id: "civic_solar",
+                    title: "Community Solar & Green Grid Bond",
+                    municipality: "Regional Clean Power Authority",
+                    yieldRate: 4.8,
+                    parValue: 100.0,
+                    impactDescription: "Funds rooftop solar panel installations and smart batteries across regional public high schools.",
+                    metricName: "MWh Clean Energy",
+                    metricPerUnit: 1.2,
+                    unitsOwned: 0
+                ),
+                CivicBond(
+                    id: "civic_water",
+                    title: "Clean Watershed & Aquifer Bond",
+                    municipality: "Municipal Water Agency",
+                    yieldRate: 4.2,
+                    parValue: 100.0,
+                    impactDescription: "Upgrades clean municipal water filtration pipelines and drought runoff reservoirs.",
+                    metricName: "K-Gallons Filtered",
+                    metricPerUnit: 15.0,
+                    unitsOwned: 0
+                )
+            ]
+        }
     }
     
     var performanceHistory: [PortfolioDataPoint] {
@@ -209,8 +285,12 @@ class PortfolioManager: ObservableObject {
         }
     }
     
+    var totalCivicBondValue: Double {
+        civicBonds.reduce(0.0) { $0 + (Double($1.unitsOwned) * $1.parValue) }
+    }
+    
     var netWorth: Double {
-        cash + portfolioStockValue
+        cash + portfolioStockValue + totalCivicBondValue
     }
     
     func getPrice(for symbol: String) -> Double {
@@ -224,10 +304,23 @@ class PortfolioManager: ObservableObject {
         cash += bonusCash
     }
     
+    func fundCivicBond(bondId: String, units: Int) -> Bool {
+        guard units > 0, let index = civicBonds.firstIndex(where: { $0.id == bondId }) else { return false }
+        let totalCost = Double(units) * civicBonds[index].parValue
+        guard cash >= totalCost else { return false }
+        
+        cash -= totalCost
+        civicBonds[index].unitsOwned += units
+        transactions.insert(
+            TradeTransaction(id: UUID(), symbol: "MUNI:\(civicBonds[index].id.uppercased())", shares: units, price: civicBonds[index].parValue, type: "CIVIC_BOND", timestamp: Date()),
+            at: 0
+        )
+        return true
+    }
+    
     func executeBuy(symbol: String, shares: Int) -> Bool {
         let sym = symbol.uppercased().trimmingCharacters(in: .whitespaces)
         guard shares > 0 else { return false }
-        
         let price = getPrice(for: sym)
         let totalCost = price * Double(shares)
         guard cash >= totalCost else { return false }
@@ -249,10 +342,7 @@ class PortfolioManager: ObservableObject {
     
     func executeSell(symbol: String, shares: Int) -> Bool {
         let sym = symbol.uppercased().trimmingCharacters(in: .whitespaces)
-        guard var existing = holdings[sym], existing.shares >= shares, shares > 0 else {
-            return false
-        }
-        
+        guard var existing = holdings[sym], existing.shares >= shares, shares > 0 else { return false }
         let price = getPrice(for: sym)
         let totalRevenue = price * Double(shares)
         

@@ -16,6 +16,9 @@ struct ContentView: View {
             TradeStationView(manager: manager)
                 .tabItem { Label("Trade", systemImage: "arrow.left.arrow.right") }
             
+            CivicImpactView(manager: manager)
+                .tabItem { Label("Civic Impact", systemImage: "building.columns.fill") }
+            
             AcademyHomeView(manager: manager)
                 .tabItem { Label("Academy", systemImage: "graduationcap.fill") }
             
@@ -26,7 +29,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Portfolio View
+// MARK: - Subview 1: Portfolio View
 struct PortfolioView: View {
     @ObservedObject var manager: PortfolioManager
     @State private var selectedDay: String? = nil
@@ -62,22 +65,28 @@ struct PortfolioView: View {
                             .font(.system(size: 38, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
                         
-                        HStack(spacing: 16) {
-                            HStack(spacing: 8) {
+                        HStack(spacing: 12) {
+                            HStack(spacing: 6) {
                                 Circle().fill(Color.green).frame(width: 8, height: 8)
                                 VStack(alignment: .leading) {
                                     Text("Cash").font(.caption2).foregroundColor(.gray)
-                                    Text("$\(manager.cash, specifier: "%.2f")")
-                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("$\(manager.cash, specifier: "%.0f")").font(.caption).fontWeight(.semibold)
                                 }
                             }
                             Spacer()
-                            HStack(spacing: 8) {
+                            HStack(spacing: 6) {
                                 Circle().fill(Color.cyan).frame(width: 8, height: 8)
+                                VStack(alignment: .leading) {
+                                    Text("Equities").font(.caption2).foregroundColor(.gray)
+                                    Text("$\(manager.portfolioStockValue, specifier: "%.0f")").font(.caption).fontWeight(.semibold)
+                                }
+                            }
+                            Spacer()
+                            HStack(spacing: 6) {
+                                Circle().fill(Color.purple).frame(width: 8, height: 8)
                                 VStack(alignment: .trailing) {
-                                    Text("Stocks").font(.caption2).foregroundColor(.gray)
-                                    Text("$\(manager.portfolioStockValue, specifier: "%.2f")")
-                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Civic Bonds").font(.caption2).foregroundColor(.gray)
+                                    Text("$\(manager.totalCivicBondValue, specifier: "%.0f")").font(.caption).fontWeight(.semibold)
                                 }
                             }
                         }
@@ -211,12 +220,12 @@ struct PortfolioView: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
                         
-                        if manager.holdings.isEmpty {
+                        if manager.holdings.isEmpty && manager.totalCivicBondValue == 0 {
                             VStack(spacing: 8) {
                                 Image(systemName: "tray")
                                     .font(.title2)
                                     .foregroundColor(.gray)
-                                Text("No positions open yet. Visit Trade Station or earn seed cash in Academy.")
+                                Text("No positions open yet. Visit Trade Station or fund Civic Bonds.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
@@ -251,6 +260,28 @@ struct PortfolioView: View {
                                 }
                                 Divider().background(Color.white.opacity(0.05))
                             }
+                            
+                            ForEach(manager.civicBonds.filter { $0.unitsOwned > 0 }) { bond in
+                                HStack {
+                                    Circle()
+                                        .fill(Color.purple.opacity(0.2))
+                                        .frame(width: 40, height: 40)
+                                        .overlay(Image(systemName: "building.columns.fill").foregroundColor(.purple))
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(bond.title).font(.subheadline).fontWeight(.bold).lineLimit(1)
+                                        Text("\(bond.unitsOwned) units • \(bond.yieldRate, specifier: "%.1f")% Muni Yield")
+                                            .font(.caption2).foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("$\(Double(bond.unitsOwned) * bond.parValue, specifier: "%.2f")")
+                                            .font(.subheadline).fontWeight(.semibold)
+                                        Text("CIVIC BOND").font(.caption2).fontWeight(.bold).foregroundColor(.purple)
+                                    }
+                                }
+                                Divider().background(Color.white.opacity(0.05))
+                            }
                         }
                     }
                     .padding(18)
@@ -266,8 +297,8 @@ struct PortfolioView: View {
                             
                             ForEach(manager.transactions.prefix(3)) { tx in
                                 HStack {
-                                    Image(systemName: tx.type == "BUY" ? "arrow.down.left.circle.fill" : "arrow.up.right.circle.fill")
-                                        .foregroundColor(tx.type == "BUY" ? .green : .red)
+                                    Image(systemName: tx.type == "BUY" ? "arrow.down.left.circle.fill" : (tx.type == "CIVIC_BOND" ? "building.columns.circle.fill" : "arrow.up.right.circle.fill"))
+                                        .foregroundColor(tx.type == "BUY" ? .green : (tx.type == "CIVIC_BOND" ? .purple : .red))
                                         .font(.title3)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
@@ -296,7 +327,150 @@ struct PortfolioView: View {
     }
 }
 
-// MARK: - Trade Station View
+// MARK: - Subview 2: Civic Impact Module
+struct CivicImpactView: View {
+    @ObservedObject var manager: PortfolioManager
+    @State private var alertMessage: String = ""
+    @State private var showAlert: Bool = false
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Civic Community Banner
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "building.columns.fill")
+                                .foregroundColor(.purple)
+                            Text("COMMUNITY IMPACT LEDGER")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.purple)
+                                .tracking(1)
+                        }
+                        
+                        Text("Civic Community Bonds")
+                            .font(.title2)
+                            .fontWeight(.heavy)
+                        
+                        Text("Allocate virtual seed capital directly into municipal infrastructure. Earn steady interest while tracking measurable community improvements.")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(18)
+                    .background(Color(red: 25/255, green: 22/255, blue: 38/255))
+                    .cornerRadius(18)
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.3), lineWidth: 1))
+                    
+                    // Cumulative Impact Dashboard
+                    HStack(spacing: 14) {
+                        let totalSolar = manager.civicBonds.first(where: { $0.id == "civic_solar" })?.unitsOwned ?? 0
+                        let totalWater = manager.civicBonds.first(where: { $0.id == "civic_water" })?.unitsOwned ?? 0
+                        
+                        VStack(spacing: 4) {
+                            Text("\(Double(totalSolar) * 1.2, specifier: "%.1f")")
+                                .font(.title)
+                                .fontWeight(.heavy)
+                                .foregroundColor(.yellow)
+                            Text("MWh Clean Energy")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 22/255, green: 25/255, blue: 35/255))
+                        .cornerRadius(14)
+                        
+                        VStack(spacing: 4) {
+                            Text("\(Double(totalWater) * 15.0, specifier: "%.0f")")
+                                .font(.title)
+                                .fontWeight(.heavy)
+                                .foregroundColor(.cyan)
+                            Text("K-Gal Water")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 22/255, green: 25/255, blue: 35/255))
+                        .cornerRadius(14)
+                    }
+                    
+                    // Available Civic Bonds
+                    ForEach(manager.civicBonds) { bond in
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(bond.title)
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                    Text(bond.municipality)
+                                        .font(.caption2)
+                                        .foregroundColor(.purple)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("\(bond.yieldRate, specifier: "%.1f")% APY")
+                                        .font(.subheadline)
+                                        .fontWeight(.heavy)
+                                        .foregroundColor(.green)
+                                    Text("$\(Int(bond.parValue))/unit")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            
+                            Text(bond.impactDescription)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            HStack {
+                                Text("Owned: \(bond.unitsOwned) units")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.cyan)
+                                Spacer()
+                                
+                                Button(action: {
+                                    if manager.fundCivicBond(bondId: bond.id, units: 1) {
+                                        alertMessage = "Successfully funded 1 unit of \(bond.title)! Impact credited to the community ledger."
+                                    } else {
+                                        alertMessage = "Insufficient cash balance. Complete Academy lessons to earn more capital."
+                                    }
+                                    showAlert = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "plus.circle.fill")
+                                        Text("Fund $100")
+                                    }
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(manager.cash >= 100 ? Color.purple : Color.gray.opacity(0.3))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                }
+                                .disabled(manager.cash < 100)
+                            }
+                        }
+                        .padding(18)
+                        .background(Color(red: 22/255, green: 25/255, blue: 35/255))
+                        .cornerRadius(18)
+                    }
+                }
+                .padding()
+            }
+            .background(Color(red: 14/255, green: 16/255, blue: 22/255).ignoresSafeArea())
+            .navigationTitle("Civic Impact")
+            .alert(isPresented: $showAlert) {
+                Alert(title: Text("Civic Investment"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+            }
+        }
+    }
+}
+
+// MARK: - Subview 3: Trade Station
 struct TradeStationView: View {
     @ObservedObject var manager: PortfolioManager
     @State private var symbol: String = "AAPL"
@@ -467,7 +641,7 @@ struct TradeStationView: View {
     }
 }
 
-// MARK: - Gamified Academy
+// MARK: - Subview 4: Gamified Academy
 struct AcademyHomeView: View {
     @ObservedObject var manager: PortfolioManager
     @State private var activeModule: AcademyModule?
@@ -762,7 +936,7 @@ struct LessonInteractiveModal: View {
     }
 }
 
-// MARK: - Compound Growth Calculator
+// MARK: - Subview 5: Compound Growth Calculator
 struct CompoundCalculatorView: View {
     @State private var monthlySavings: Double = 100.0
     @State private var years: Double = 10.0
