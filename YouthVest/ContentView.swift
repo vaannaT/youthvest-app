@@ -25,7 +25,7 @@ struct ContentView: View {
             AcademyHomeView(manager: manager)
                 .tabItem { Label("Academy", systemImage: "graduationcap.fill") }
             
-            CompoundCalculatorView()
+            CompoundCalculatorView(manager: manager)
                 .tabItem { Label("Growth", systemImage: "chart.line.uptrend.xyaxis") }
         }
         .preferredColorScheme(.dark)
@@ -470,7 +470,7 @@ struct CivicImpactView: View {
     }
 }
 
-// MARK: - Subview 3: Trade Station (With Add and Subtract Multipliers)
+// MARK: - Subview 3: Trade Station
 struct TradeStationView: View {
     @ObservedObject var manager: PortfolioManager
     @State private var symbol: String = "AAPL"
@@ -543,9 +543,8 @@ struct TradeStationView: View {
                             #endif
                         }
                         
-                        // Dual Increment & Decrement Multiplier Row
+                        // Dual Multipliers (-10, -5, -1, +1, +5, +10, +25)
                         HStack(spacing: 6) {
-                            // Subtraction Multipliers
                             ForEach([-10, -5, -1], id: \.self) { delta in
                                 Button("\(delta)") {
                                     let current = Int(sharesText) ?? 0
@@ -563,7 +562,6 @@ struct TradeStationView: View {
                             
                             Spacer()
                             
-                            // Addition Multipliers
                             ForEach([1, 5, 10, 25], id: \.self) { delta in
                                 Button("+\(delta)") {
                                     let current = Int(sharesText) ?? 0
@@ -956,7 +954,7 @@ struct LessonInteractiveModal: View {
     }
 }
 
-// MARK: - Subview 5: Compound Growth Calculator (With Animated 30-Year Time-Lapse)
+// MARK: - Subview 5: Compound Growth Calculator (Direct Real-Time Allocation Engine)
 struct YearlyGrowthPoint: Identifiable {
     let id = UUID()
     let year: Int
@@ -965,8 +963,10 @@ struct YearlyGrowthPoint: Identifiable {
 }
 
 struct CompoundCalculatorView: View {
+    @ObservedObject var manager: PortfolioManager
+    
     @State private var monthlySavings: Double = 150.0
-    @State private var annualReturn: Double = 9.0
+    @State private var equityAnnualReturn: Double = 9.0
     
     // Time-Lapse Engine State
     @State private var currentPlaybackYear: Int = 1
@@ -975,27 +975,47 @@ struct CompoundCalculatorView: View {
     
     let maxSimulationYears: Int = 30
     
+    // Asset-Weighted Real-Time Future Value
+    // If you sell stock to cash, cash yield is 0%, causing projected trajectory to adjust realistically!
     private func computeFutureValue(forYear yr: Int) -> Double {
-        let r = annualReturn / 100.0 / 12.0
-        let n = Double(yr) * 12.0
-        guard r > 0 else { return monthlySavings * n }
-        return monthlySavings * ((pow(1.0 + r, n) - 1.0) / r)
+        let monthlyEquityRate = (equityAnnualReturn / 100.0) / 12.0
+        let monthlyBondRate = 0.045 / 12.0 // Average Muni Bond Yield
+        let totalMonths = Double(yr) * 12.0
+        
+        // 1. Equities compound at selected equity return
+        let compoundedEquities = manager.portfolioStockValue * pow(1.0 + monthlyEquityRate, totalMonths)
+        
+        // 2. Civic Bonds compound at municipal yield
+        let compoundedBonds = manager.totalCivicBondValue * pow(1.0 + monthlyBondRate, totalMonths)
+        
+        // 3. Uninvested Cash does NOT compound (0% return)
+        let uninvestedCash = manager.cash
+        
+        // 4. Monthly Scheduled Savings Annuity
+        let compoundedAnnuity: Double
+        if monthlyEquityRate > 0 {
+            compoundedAnnuity = monthlySavings * ((pow(1.0 + monthlyEquityRate, totalMonths) - 1.0) / monthlyEquityRate)
+        } else {
+            compoundedAnnuity = monthlySavings * totalMonths
+        }
+        
+        return compoundedEquities + compoundedBonds + uninvestedCash + compoundedAnnuity
     }
     
     private var timeLapseData: [YearlyGrowthPoint] {
-        (1...currentPlaybackYear).map { yr in
-            let principal = monthlySavings * Double(yr) * 12.0
-            let total = computeFutureValue(forYear: yr)
+        (0...currentPlaybackYear).map { yr in
+            let principal = manager.netWorth + (monthlySavings * Double(yr) * 12.0)
+            let total = yr == 0 ? manager.netWorth : computeFutureValue(forYear: yr)
             return YearlyGrowthPoint(year: yr, principal: principal, totalValue: total)
         }
     }
     
     private var currentTotalValue: Double {
-        computeFutureValue(forYear: currentPlaybackYear)
+        currentPlaybackYear == 0 ? manager.netWorth : computeFutureValue(forYear: currentPlaybackYear)
     }
     
     private var currentPrincipal: Double {
-        monthlySavings * Double(currentPlaybackYear) * 12.0
+        manager.netWorth + (monthlySavings * Double(currentPlaybackYear) * 12.0)
     }
     
     private var currentInterestEarned: Double {
@@ -1052,7 +1072,8 @@ struct CompoundCalculatorView: View {
                                 
                                 AreaMark(
                                     x: .value("Year", pt.year),
-                                    y: .value("Total Net Worth", pt.totalValue)
+                                    yStart: .value("Min", max(1_000.0, manager.netWorth * 0.8)),
+                                    yEnd: .value("Total Net Worth", pt.totalValue)
                                 )
                                 .interpolationMethod(.catmullRom)
                                 .foregroundStyle(
@@ -1081,8 +1102,8 @@ struct CompoundCalculatorView: View {
                                 .symbolSize(70)
                             }
                         }
-                        .chartXScale(domain: 1...maxSimulationYears)
-                        .chartYScale(domain: 0...computeFutureValue(forYear: maxSimulationYears) * 1.05)
+                        .chartXScale(domain: 0...maxSimulationYears)
+                        .chartYScale(domain: max(1_000.0, manager.netWorth * 0.8)...computeFutureValue(forYear: maxSimulationYears) * 1.05)
                         .frame(height: 180)
                         .chartYAxis {
                             AxisMarks(position: .leading) { val in
@@ -1113,7 +1134,7 @@ struct CompoundCalculatorView: View {
                                 get: { Double(currentPlaybackYear) },
                                 set: { currentPlaybackYear = Int($0) }
                             ),
-                            in: 1...Double(maxSimulationYears),
+                            in: 0...Double(maxSimulationYears),
                             step: 1
                         )
                         .tint(.cyan)
@@ -1121,13 +1142,68 @@ struct CompoundCalculatorView: View {
                     .padding(20)
                     .background(Color(red: 22/255, green: 25/255, blue: 35/255))
                     .cornerRadius(18)
+                    .id("timelapse_chart_\(manager.transactions.count)_\(Int(manager.netWorth))")
                     
-                    // Live Readout Breakdown
+                    // Live Allocation Breakdown Card
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("CURRENT ALLOCATION")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.gray)
+                                .tracking(1)
+                            Spacer()
+                            Text("Live Balance")
+                                .font(.caption2)
+                                .foregroundColor(.green)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                                    Text("Cash (0% yield)").font(.caption2).foregroundColor(.gray)
+                                }
+                                Text("$\(manager.cash, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                            }
+                            Spacer()
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Color.cyan).frame(width: 6, height: 6)
+                                    Text("Stocks (\(equityAnnualReturn, specifier: "%.1f")%)").font(.caption2).foregroundColor(.gray)
+                                }
+                                Text("$\(manager.portfolioStockValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Color.purple).frame(width: 6, height: 6)
+                                    Text("Bonds (4.5%)").font(.caption2).foregroundColor(.gray)
+                                }
+                                Text("$\(manager.totalCivicBondValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(Color(red: 20/255, green: 23/255, blue: 32/255))
+                    .cornerRadius(16)
+                    
+                    // Live Compound Growth Projection Details
                     VStack(spacing: 14) {
                         HStack {
                             HStack(spacing: 6) {
+                                Circle().fill(Color.yellow).frame(width: 8, height: 8)
+                                Text("Starting Live Net Worth").foregroundColor(.gray)
+                            }
+                            Spacer()
+                            Text("$\(manager.netWorth, specifier: "%.2f")")
+                                .fontWeight(.semibold)
+                                .foregroundColor(.yellow)
+                        }
+                        HStack {
+                            HStack(spacing: 6) {
                                 Circle().fill(Color.gray).frame(width: 8, height: 8)
-                                Text("Principal Contributed").foregroundColor(.gray)
+                                Text("Total Principal Saved").foregroundColor(.gray)
                             }
                             Spacer()
                             Text("$\(currentPrincipal, specifier: "%.2f")")
@@ -1136,7 +1212,7 @@ struct CompoundCalculatorView: View {
                         HStack {
                             HStack(spacing: 6) {
                                 Circle().fill(Color.green).frame(width: 8, height: 8)
-                                Text("Interest Generated").foregroundColor(.gray)
+                                Text("Compound Interest Generated").foregroundColor(.gray)
                             }
                             Spacer()
                             Text("+$\(currentInterestEarned, specifier: "%.2f")")
@@ -1145,7 +1221,7 @@ struct CompoundCalculatorView: View {
                         }
                         Divider().background(Color.white.opacity(0.08))
                         HStack {
-                            Text("Total Accumulated Value")
+                            Text("Projected Net Value")
                                 .fontWeight(.bold)
                             Spacer()
                             Text("$\(currentTotalValue, specifier: "%.2f")")
@@ -1158,7 +1234,7 @@ struct CompoundCalculatorView: View {
                     .background(Color(red: 22/255, green: 25/255, blue: 35/255))
                     .cornerRadius(18)
                     
-                    // Adjustable Controls
+                    // Controls
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
@@ -1171,11 +1247,11 @@ struct CompoundCalculatorView: View {
                         
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Expected Annual Return")
+                                Text("Expected Stock Return")
                                 Spacer()
-                                Text("\(annualReturn, specifier: "%.1f")%").fontWeight(.bold).foregroundColor(.cyan)
+                                Text("\(equityAnnualReturn, specifier: "%.1f")%").fontWeight(.bold).foregroundColor(.cyan)
                             }
-                            Slider(value: $annualReturn, in: 2...14, step: 0.5).tint(.cyan)
+                            Slider(value: $equityAnnualReturn, in: 2...14, step: 0.5).tint(.cyan)
                         }
                     }
                     .padding(20)
@@ -1197,7 +1273,7 @@ struct CompoundCalculatorView: View {
             stopTimer()
         } else {
             if currentPlaybackYear >= maxSimulationYears {
-                currentPlaybackYear = 1
+                currentPlaybackYear = 0
             }
             isPlayingTimeLapse = true
             playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: true) { _ in
