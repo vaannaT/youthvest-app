@@ -105,7 +105,7 @@ struct PortfolioView: View {
                     .cornerRadius(20)
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.08), lineWidth: 1))
                     
-                    // Performance Trend Chart
+                    // Upward Sloping Performance Trend Chart
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -291,7 +291,7 @@ struct PortfolioView: View {
                     .background(Color(red: 22/255, green: 25/255, blue: 35/255))
                     .cornerRadius(18)
                     
-                    // Recent Transactions Log
+                    // Execution Activity
                     if !manager.transactions.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Execution Activity")
@@ -954,12 +954,15 @@ struct LessonInteractiveModal: View {
     }
 }
 
-// MARK: - Subview 5: Compound Growth Calculator (Direct Real-Time Allocation Engine)
+// MARK: - Subview 5: Compound Growth Calculator (Dynamic Allocation Time-Lapse)
 struct YearlyGrowthPoint: Identifiable {
     let id = UUID()
     let year: Int
     let principal: Double
     let totalValue: Double
+    let stockValue: Double
+    let bondValue: Double
+    let cashValue: Double
 }
 
 struct CompoundCalculatorView: View {
@@ -975,39 +978,57 @@ struct CompoundCalculatorView: View {
     
     let maxSimulationYears: Int = 30
     
-    // Asset-Weighted Real-Time Future Value
-    // If you sell stock to cash, cash yield is 0%, causing projected trajectory to adjust realistically!
-    private func computeFutureValue(forYear yr: Int) -> Double {
+    // Individual Asset Projections by Year
+    private func computeStockValue(forYear yr: Int) -> Double {
         let monthlyEquityRate = (equityAnnualReturn / 100.0) / 12.0
-        let monthlyBondRate = 0.045 / 12.0 // Average Muni Bond Yield
         let totalMonths = Double(yr) * 12.0
+        let compoundedInitial = manager.portfolioStockValue * pow(1.0 + monthlyEquityRate, totalMonths)
         
-        // 1. Equities compound at selected equity return
-        let compoundedEquities = manager.portfolioStockValue * pow(1.0 + monthlyEquityRate, totalMonths)
-        
-        // 2. Civic Bonds compound at municipal yield
-        let compoundedBonds = manager.totalCivicBondValue * pow(1.0 + monthlyBondRate, totalMonths)
-        
-        // 3. Uninvested Cash does NOT compound (0% return)
-        let uninvestedCash = manager.cash
-        
-        // 4. Monthly Scheduled Savings Annuity
         let compoundedAnnuity: Double
         if monthlyEquityRate > 0 {
             compoundedAnnuity = monthlySavings * ((pow(1.0 + monthlyEquityRate, totalMonths) - 1.0) / monthlyEquityRate)
         } else {
             compoundedAnnuity = monthlySavings * totalMonths
         }
-        
-        return compoundedEquities + compoundedBonds + uninvestedCash + compoundedAnnuity
+        return compoundedInitial + compoundedAnnuity
+    }
+    
+    private func computeBondValue(forYear yr: Int) -> Double {
+        let monthlyBondRate = 0.045 / 12.0
+        let totalMonths = Double(yr) * 12.0
+        return manager.totalCivicBondValue * pow(1.0 + monthlyBondRate, totalMonths)
+    }
+    
+    private func computeCashValue() -> Double {
+        manager.cash
+    }
+    
+    private func computeFutureValue(forYear yr: Int) -> Double {
+        computeStockValue(forYear: yr) + computeBondValue(forYear: yr) + computeCashValue()
     }
     
     private var timeLapseData: [YearlyGrowthPoint] {
         (0...currentPlaybackYear).map { yr in
             let principal = manager.netWorth + (monthlySavings * Double(yr) * 12.0)
-            let total = yr == 0 ? manager.netWorth : computeFutureValue(forYear: yr)
-            return YearlyGrowthPoint(year: yr, principal: principal, totalValue: total)
+            let sVal = yr == 0 ? manager.portfolioStockValue : computeStockValue(forYear: yr)
+            let bVal = yr == 0 ? manager.totalCivicBondValue : computeBondValue(forYear: yr)
+            let cVal = computeCashValue()
+            let total = yr == 0 ? manager.netWorth : (sVal + bVal + cVal)
+            return YearlyGrowthPoint(year: yr, principal: principal, totalValue: total, stockValue: sVal, bondValue: bVal, cashValue: cVal)
         }
+    }
+    
+    // Current Active Year Projection Metrics
+    private var projectedStockValue: Double {
+        currentPlaybackYear == 0 ? manager.portfolioStockValue : computeStockValue(forYear: currentPlaybackYear)
+    }
+    
+    private var projectedBondValue: Double {
+        currentPlaybackYear == 0 ? manager.totalCivicBondValue : computeBondValue(forYear: currentPlaybackYear)
+    }
+    
+    private var projectedCashValue: Double {
+        computeCashValue()
     }
     
     private var currentTotalValue: Double {
@@ -1020,6 +1041,22 @@ struct CompoundCalculatorView: View {
     
     private var currentInterestEarned: Double {
         max(0, currentTotalValue - currentPrincipal)
+    }
+    
+    // Percentage shares of portfolio at currentPlaybackYear
+    private var stockSharePct: Double {
+        guard currentTotalValue > 0 else { return 0 }
+        return (projectedStockValue / currentTotalValue) * 100.0
+    }
+    
+    private var bondSharePct: Double {
+        guard currentTotalValue > 0 else { return 0 }
+        return (projectedBondValue / currentTotalValue) * 100.0
+    }
+    
+    private var cashSharePct: Double {
+        guard currentTotalValue > 0 else { return 0 }
+        return (projectedCashValue / currentTotalValue) * 100.0
     }
     
     var body: some View {
@@ -1144,43 +1181,46 @@ struct CompoundCalculatorView: View {
                     .cornerRadius(18)
                     .id("timelapse_chart_\(manager.transactions.count)_\(Int(manager.netWorth))")
                     
-                    // Live Allocation Breakdown Card
+                    // DYNAMIC PROJECTION ALLOCATION CARD
                     VStack(spacing: 12) {
                         HStack {
-                            Text("CURRENT ALLOCATION")
+                            Text("PROJECTED ALLOCATION (YEAR \(currentPlaybackYear))")
                                 .font(.caption2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.gray)
+                                .foregroundColor(.cyan)
                                 .tracking(1)
                             Spacer()
-                            Text("Live Balance")
+                            Text("Simulated Split")
                                 .font(.caption2)
-                                .foregroundColor(.green)
+                                .foregroundColor(.gray)
                         }
                         
                         HStack(spacing: 12) {
+                            // Cash (Flat)
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Circle().fill(Color.green).frame(width: 6, height: 6)
-                                    Text("Cash (0% yield)").font(.caption2).foregroundColor(.gray)
+                                    Text("Cash (\(cashSharePct, specifier: "%.0f")%)").font(.caption2).foregroundColor(.gray)
                                 }
-                                Text("$\(manager.cash, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                                Text("$\(projectedCashValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
                             }
                             Spacer()
+                            // Stocks (Growing at equity rate + monthly annuity)
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Circle().fill(Color.cyan).frame(width: 6, height: 6)
-                                    Text("Stocks (\(equityAnnualReturn, specifier: "%.1f")%)").font(.caption2).foregroundColor(.gray)
+                                    Text("Stocks (\(stockSharePct, specifier: "%.0f")%)").font(.caption2).foregroundColor(.gray)
                                 }
-                                Text("$\(manager.portfolioStockValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                                Text("$\(projectedStockValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold).foregroundColor(.cyan)
                             }
                             Spacer()
+                            // Civic Bonds (Growing at 4.5% Muni APY)
                             VStack(alignment: .trailing, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Circle().fill(Color.purple).frame(width: 6, height: 6)
-                                    Text("Bonds (4.5%)").font(.caption2).foregroundColor(.gray)
+                                    Text("Bonds (\(bondSharePct, specifier: "%.0f")%)").font(.caption2).foregroundColor(.gray)
                                 }
-                                Text("$\(manager.totalCivicBondValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold)
+                                Text("$\(projectedBondValue, specifier: "%.0f")").font(.subheadline).fontWeight(.bold).foregroundColor(.purple)
                             }
                         }
                     }
