@@ -105,7 +105,7 @@ struct PortfolioView: View {
                     .cornerRadius(20)
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.08), lineWidth: 1))
                     
-                    // Upward Sloping Performance Trend Chart
+                    // Performance Trend Chart
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -340,7 +340,6 @@ struct CivicImpactView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Civic Community Banner
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "building.columns.fill")
@@ -365,7 +364,6 @@ struct CivicImpactView: View {
                     .cornerRadius(18)
                     .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.purple.opacity(0.3), lineWidth: 1))
                     
-                    // Cumulative Impact Dashboard
                     HStack(spacing: 14) {
                         let totalSolar = manager.civicBonds.first(where: { $0.id == "civic_solar" })?.unitsOwned ?? 0
                         let totalWater = manager.civicBonds.first(where: { $0.id == "civic_water" })?.unitsOwned ?? 0
@@ -399,7 +397,6 @@ struct CivicImpactView: View {
                         .cornerRadius(14)
                     }
                     
-                    // Available Civic Bonds
                     ForEach(manager.civicBonds) { bond in
                         VStack(alignment: .leading, spacing: 14) {
                             HStack {
@@ -473,7 +470,7 @@ struct CivicImpactView: View {
     }
 }
 
-// MARK: - Subview 3: Trade Station
+// MARK: - Subview 3: Trade Station (With Add and Subtract Multipliers)
 struct TradeStationView: View {
     @ObservedObject var manager: PortfolioManager
     @State private var symbol: String = "AAPL"
@@ -483,7 +480,7 @@ struct TradeStationView: View {
     
     let quickTickers = ["AAPL", "SPY", "NVDA", "TSLA", "MSFT", "GOOGL"]
     
-    private var shares: Int { Int(sharesText) ?? 0 }
+    private var shares: Int { max(0, Int(sharesText) ?? 0) }
     private var price: Double { manager.getPrice(for: symbol) }
     private var totalCost: Double { price * Double(shares) }
     private var canBuy: Bool { shares > 0 && manager.cash >= totalCost }
@@ -546,19 +543,39 @@ struct TradeStationView: View {
                             #endif
                         }
                         
-                        HStack(spacing: 8) {
-                            Spacer()
-                            ForEach([1, 5, 10, 25], id: \.self) { qty in
-                                Button("+\(qty)") {
+                        // Dual Increment & Decrement Multiplier Row
+                        HStack(spacing: 6) {
+                            // Subtraction Multipliers
+                            ForEach([-10, -5, -1], id: \.self) { delta in
+                                Button("\(delta)") {
                                     let current = Int(sharesText) ?? 0
-                                    sharesText = "\(current + qty)"
+                                    let result = max(0, current + delta)
+                                    sharesText = "\(result)"
                                 }
                                 .font(.caption2)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.08))
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.red.opacity(0.18))
+                                .foregroundColor(.red)
                                 .cornerRadius(8)
-                                .foregroundColor(.white)
+                            }
+                            
+                            Spacer()
+                            
+                            // Addition Multipliers
+                            ForEach([1, 5, 10, 25], id: \.self) { delta in
+                                Button("+\(delta)") {
+                                    let current = Int(sharesText) ?? 0
+                                    sharesText = "\(current + delta)"
+                                }
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.08))
+                                .foregroundColor(.cyan)
+                                .cornerRadius(8)
                             }
                         }
                         Divider().background(Color.white.opacity(0.08))
@@ -939,77 +956,226 @@ struct LessonInteractiveModal: View {
     }
 }
 
-// MARK: - Subview 5: Compound Growth Calculator
+// MARK: - Subview 5: Compound Growth Calculator (With Animated 30-Year Time-Lapse)
+struct YearlyGrowthPoint: Identifiable {
+    let id = UUID()
+    let year: Int
+    let principal: Double
+    let totalValue: Double
+}
+
 struct CompoundCalculatorView: View {
-    @State private var monthlySavings: Double = 100.0
-    @State private var years: Double = 10.0
-    @State private var annualReturn: Double = 8.0
+    @State private var monthlySavings: Double = 150.0
+    @State private var annualReturn: Double = 9.0
     
-    var futureValue: Double {
+    // Time-Lapse Engine State
+    @State private var currentPlaybackYear: Int = 1
+    @State private var isPlayingTimeLapse: Bool = false
+    @State private var playbackTimer: Timer? = nil
+    
+    let maxSimulationYears: Int = 30
+    
+    private func computeFutureValue(forYear yr: Int) -> Double {
         let r = annualReturn / 100.0 / 12.0
-        let n = years * 12.0
+        let n = Double(yr) * 12.0
         guard r > 0 else { return monthlySavings * n }
         return monthlySavings * ((pow(1.0 + r, n) - 1.0) / r)
     }
     
-    var totalPrincipal: Double { monthlySavings * years * 12.0 }
-    var interestEarned: Double { futureValue - totalPrincipal }
+    private var timeLapseData: [YearlyGrowthPoint] {
+        (1...currentPlaybackYear).map { yr in
+            let principal = monthlySavings * Double(yr) * 12.0
+            let total = computeFutureValue(forYear: yr)
+            return YearlyGrowthPoint(year: yr, principal: principal, totalValue: total)
+        }
+    }
+    
+    private var currentTotalValue: Double {
+        computeFutureValue(forYear: currentPlaybackYear)
+    }
+    
+    private var currentPrincipal: Double {
+        monthlySavings * Double(currentPlaybackYear) * 12.0
+    }
+    
+    private var currentInterestEarned: Double {
+        max(0, currentTotalValue - currentPrincipal)
+    }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Monthly Contribution")
-                                Spacer()
-                                Text("$\(Int(monthlySavings))").fontWeight(.bold).foregroundColor(.cyan)
+                    // Time-Lapse Visual Display Card
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("COMPOUND TIME-LAPSE")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.gray)
+                                    .tracking(1)
+                                
+                                Text("Year \(currentPlaybackYear) of \(maxSimulationYears)")
+                                    .font(.title2)
+                                    .fontWeight(.heavy)
+                                    .foregroundColor(.white)
                             }
-                            Slider(value: $monthlySavings, in: 10...1000, step: 10).tint(.cyan)
+                            Spacer()
+                            
+                            // Play/Pause Time-Lapse Button
+                            Button(action: toggleTimeLapse) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isPlayingTimeLapse ? "pause.fill" : "play.fill")
+                                    Text(isPlayingTimeLapse ? "Pause" : "Play")
+                                }
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.cyan)
+                                .clipShape(Capsule())
+                            }
                         }
                         
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Horizon")
-                                Spacer()
-                                Text("\(Int(years)) Years").fontWeight(.bold).foregroundColor(.cyan)
+                        // Dynamic Animated Chart
+                        Chart {
+                            ForEach(timeLapseData) { pt in
+                                LineMark(
+                                    x: .value("Year", pt.year),
+                                    y: .value("Total Net Worth", pt.totalValue)
+                                )
+                                .interpolationMethod(.catmullRom)
+                                .foregroundStyle(Color.cyan)
+                                .lineStyle(StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                                
+                                AreaMark(
+                                    x: .value("Year", pt.year),
+                                    y: .value("Total Net Worth", pt.totalValue)
+                                )
+                                .interpolationMethod(.catmullRom)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.cyan.opacity(0.3), Color.clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                
+                                LineMark(
+                                    x: .value("Year", pt.year),
+                                    y: .value("Principal Saved", pt.principal)
+                                )
+                                .interpolationMethod(.catmullRom)
+                                .foregroundStyle(Color.gray.opacity(0.7))
+                                .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 4]))
                             }
-                            Slider(value: $years, in: 1...40, step: 1).tint(.cyan)
+                            
+                            if let last = timeLapseData.last {
+                                PointMark(
+                                    x: .value("Year", last.year),
+                                    y: .value("Total Net Worth", last.totalValue)
+                                )
+                                .foregroundStyle(Color.cyan)
+                                .symbolSize(70)
+                            }
+                        }
+                        .chartXScale(domain: 1...maxSimulationYears)
+                        .chartYScale(domain: 0...computeFutureValue(forYear: maxSimulationYears) * 1.05)
+                        .frame(height: 180)
+                        .chartYAxis {
+                            AxisMarks(position: .leading) { val in
+                                if let d = val.as(Double.self) {
+                                    AxisValueLabel {
+                                        Text("$\(Int(d / 1_000))k")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                        }
+                        .chartXAxis {
+                            AxisMarks { val in
+                                if let yr = val.as(Int.self) {
+                                    AxisValueLabel {
+                                        Text("Yr \(yr)")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
                         }
                         
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Annual Return")
-                                Spacer()
-                                Text("\(annualReturn, specifier: "%.1f")%").fontWeight(.bold).foregroundColor(.cyan)
+                        // Scrubber Slider
+                        Slider(
+                            value: Binding(
+                                get: { Double(currentPlaybackYear) },
+                                set: { currentPlaybackYear = Int($0) }
+                            ),
+                            in: 1...Double(maxSimulationYears),
+                            step: 1
+                        )
+                        .tint(.cyan)
+                    }
+                    .padding(20)
+                    .background(Color(red: 22/255, green: 25/255, blue: 35/255))
+                    .cornerRadius(18)
+                    
+                    // Live Readout Breakdown
+                    VStack(spacing: 14) {
+                        HStack {
+                            HStack(spacing: 6) {
+                                Circle().fill(Color.gray).frame(width: 8, height: 8)
+                                Text("Principal Contributed").foregroundColor(.gray)
                             }
-                            Slider(value: $annualReturn, in: 2...14, step: 0.5).tint(.cyan)
+                            Spacer()
+                            Text("$\(currentPrincipal, specifier: "%.2f")")
+                                .fontWeight(.semibold)
+                        }
+                        HStack {
+                            HStack(spacing: 6) {
+                                Circle().fill(Color.green).frame(width: 8, height: 8)
+                                Text("Interest Generated").foregroundColor(.gray)
+                            }
+                            Spacer()
+                            Text("+$\(currentInterestEarned, specifier: "%.2f")")
+                                .fontWeight(.semibold)
+                                .foregroundColor(.green)
+                        }
+                        Divider().background(Color.white.opacity(0.08))
+                        HStack {
+                            Text("Total Accumulated Value")
+                                .fontWeight(.bold)
+                            Spacer()
+                            Text("$\(currentTotalValue, specifier: "%.2f")")
+                                .font(.title2)
+                                .fontWeight(.heavy)
+                                .foregroundColor(.cyan)
                         }
                     }
                     .padding(20)
                     .background(Color(red: 22/255, green: 25/255, blue: 35/255))
                     .cornerRadius(18)
                     
-                    VStack(spacing: 14) {
-                        HStack {
-                            Text("Total Principal Saved").foregroundColor(.gray)
-                            Spacer()
-                            Text("$\(totalPrincipal, specifier: "%.2f")").fontWeight(.semibold)
+                    // Adjustable Controls
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Monthly Contribution")
+                                Spacer()
+                                Text("$\(Int(monthlySavings))/mo").fontWeight(.bold).foregroundColor(.cyan)
+                            }
+                            Slider(value: $monthlySavings, in: 25...1000, step: 25).tint(.cyan)
                         }
-                        HStack {
-                            Text("Compound Growth Generated").foregroundColor(.gray)
-                            Spacer()
-                            Text("$\(interestEarned, specifier: "%.2f")").fontWeight(.semibold).foregroundColor(.green)
-                        }
-                        Divider().background(Color.white.opacity(0.08))
-                        HStack {
-                            Text("Projected Net Value").fontWeight(.bold)
-                            Spacer()
-                            Text("$\(futureValue, specifier: "%.2f")")
-                                .font(.title2)
-                                .fontWeight(.heavy)
-                                .foregroundColor(.cyan)
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Expected Annual Return")
+                                Spacer()
+                                Text("\(annualReturn, specifier: "%.1f")%").fontWeight(.bold).foregroundColor(.cyan)
+                            }
+                            Slider(value: $annualReturn, in: 2...14, step: 0.5).tint(.cyan)
                         }
                     }
                     .padding(20)
@@ -1020,6 +1186,35 @@ struct CompoundCalculatorView: View {
             }
             .background(Color(red: 14/255, green: 16/255, blue: 22/255).ignoresSafeArea())
             .navigationTitle("Compound Engine")
+            .onDisappear {
+                stopTimer()
+            }
         }
+    }
+    
+    private func toggleTimeLapse() {
+        if isPlayingTimeLapse {
+            stopTimer()
+        } else {
+            if currentPlaybackYear >= maxSimulationYears {
+                currentPlaybackYear = 1
+            }
+            isPlayingTimeLapse = true
+            playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: true) { _ in
+                if currentPlaybackYear < maxSimulationYears {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        currentPlaybackYear += 1
+                    }
+                } else {
+                    stopTimer()
+                }
+            }
+        }
+    }
+    
+    private func stopTimer() {
+        isPlayingTimeLapse = false
+        playbackTimer?.invalidate()
+        playbackTimer = nil
     }
 }
